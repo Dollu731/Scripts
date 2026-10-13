@@ -1,0 +1,337 @@
+
+-- EDEX ULTIMATE V2
+-- Created for Dollu731
+-- Roblox Studio LocalScript
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local guiParent = player:WaitForChild("PlayerGui")
+
+local old = guiParent:FindFirstChild("EDEX_Ultimate")
+if old then old:Destroy() end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "EDEX_Ultimate"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = guiParent
+
+local character, humanoid, root
+local speedEnabled = false
+local noclipEnabled = false
+local espEnabled = false
+local flying = false
+local savedPosition = nil
+local highlights = {}
+local flyConnection
+local noclipConnection
+local flyAttachment
+local flyVelocity
+local flyDirection = Vector3.zero
+
+local function updateCharacter()
+    character = player.Character or player.CharacterAdded:Wait()
+    humanoid = character:WaitForChild("Humanoid")
+    root = character:WaitForChild("HumanoidRootPart")
+end
+
+updateCharacter()
+
+local function round(obj, radius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius)
+    corner.Parent = obj
+end
+
+local function createButton(text, parent, callback)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -20, 0, 43)
+    button.BackgroundColor3 = Color3.fromRGB(29, 35, 48)
+    button.TextColor3 = Color3.fromRGB(230, 245, 255)
+    button.Font = Enum.Font.GothamBold
+    button.TextSize = 14
+    button.Text = text
+    button.Parent = parent
+    round(button, 9)
+
+    button.MouseButton1Click:Connect(function()
+        TweenService:Create(
+            button,
+            TweenInfo.new(0.12),
+            {BackgroundColor3 = Color3.fromRGB(32, 105, 130)}
+        ):Play()
+
+        task.delay(0.15, function()
+            if button.Parent then
+                TweenService:Create(
+                    button,
+                    TweenInfo.new(0.2),
+                    {BackgroundColor3 = Color3.fromRGB(29, 35, 48)}
+                ):Play()
+            end
+        end)
+
+        callback(button)
+    end)
+
+    return button
+end
+
+local main = Instance.new("Frame")
+main.Size = UDim2.fromOffset(330, 430)
+main.Position = UDim2.new(0.5, -165, 0.5, -215)
+main.BackgroundColor3 = Color3.fromRGB(12, 16, 25)
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+round(main, 14)
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(0, 205, 255)
+stroke.Thickness = 2
+stroke.Parent = main
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -60, 0, 48)
+title.Position = UDim2.fromOffset(12, 0)
+title.BackgroundTransparency = 1
+title.Text = "EDEX | HELLO BACK CHAD"
+title.TextColor3 = Color3.fromRGB(0, 220, 255)
+title.Font = Enum.Font.Code
+title.TextSize = 19
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = main
+
+local minimize = Instance.new("TextButton")
+minimize.Size = UDim2.fromOffset(38, 32)
+minimize.Position = UDim2.new(1, -45, 0, 8)
+minimize.Text = "−"
+minimize.TextSize = 24
+minimize.TextColor3 = Color3.new(1, 1, 1)
+minimize.BackgroundColor3 = Color3.fromRGB(35, 45, 60)
+minimize.Parent = main
+round(minimize, 8)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Position = UDim2.fromOffset(10, 53)
+scroll.Size = UDim2.new(1, -20, 1, -65)
+scroll.BackgroundTransparency = 1
+scroll.ScrollBarThickness = 3
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.CanvasSize = UDim2.new()
+scroll.Parent = main
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 7)
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+layout.Parent = scroll
+
+local function restoreCollisions()
+    if not character then return end
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+        end
+    end
+end
+
+createButton("NOCLIP : OFF", scroll, function(button)
+    noclipEnabled = not noclipEnabled
+    button.Text = "NOCLIP : " .. (noclipEnabled and "ON" or "OFF")
+
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+
+    if noclipEnabled then
+        noclipConnection = RunService.Stepped:Connect(function()
+            if character then
+                for _, part in ipairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    else
+        restoreCollisions()
+    end
+end)
+
+local function stopFlying()
+    flying = false
+    if flyConnection then
+        flyConnection:Disconnect()
+        flyConnection = nil
+    end
+    if flyVelocity then
+        flyVelocity:Destroy()
+        flyVelocity = nil
+    end
+    if flyAttachment then
+        flyAttachment:Destroy()
+        flyAttachment = nil
+    end
+    if humanoid then
+        humanoid.PlatformStand = false
+    end
+end
+
+createButton("FLY : OFF", scroll, function(button)
+    if flying then
+        stopFlying()
+        button.Text = "FLY : OFF"
+        return
+    end
+
+    updateCharacter()
+    flying = true
+    button.Text = "FLY : ON"
+
+    flyAttachment = Instance.new("Attachment")
+    flyAttachment.Parent = root
+
+    flyVelocity = Instance.new("LinearVelocity")
+    flyVelocity.Attachment0 = flyAttachment
+    flyVelocity.MaxForce = math.huge
+    flyVelocity.VectorVelocity = Vector3.zero
+    flyVelocity.Parent = root
+
+    humanoid.PlatformStand = true
+
+    flyConnection = RunService.Heartbeat:Connect(function()
+        if not flying or not root or not humanoid then return end
+
+        local move = humanoid.MoveDirection
+        local vertical = 0
+
+        if UIS:IsKeyDown(Enum.KeyCode.Space) then
+            vertical = 1
+        elseif UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+            vertical = -1
+        end
+
+        flyVelocity.VectorVelocity =
+            move * 55 + Vector3.new(0, vertical * 55, 0)
+    end)
+end)
+
+local function refreshESP()
+    for _, highlight in pairs(highlights) do
+        highlight:Destroy()
+    end
+    table.clear(highlights)
+
+    if not espEnabled then return end
+
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player and other.Character then
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "EDEX_ESP"
+            highlight.Adornee = other.Character
+            highlight.FillColor = Color3.fromRGB(0, 200, 255)
+            highlight.OutlineColor = Color3.new(1, 1, 1)
+            highlight.FillTransparency = 0.65
+            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            highlight.Parent = gui
+            highlights[other] = highlight
+        end
+    end
+end
+
+createButton("ESP : OFF", scroll, function(button)
+    espEnabled = not espEnabled
+    button.Text = "ESP : " .. (espEnabled and "ON" or "OFF")
+    refreshESP()
+end)
+
+Players.PlayerAdded:Connect(function(other)
+    other.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        refreshESP()
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function()
+    refreshESP()
+end)
+
+for _, other in ipairs(Players:GetPlayers()) do
+    other.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        refreshESP()
+    end)
+end
+
+createButton("SUPER SPEED : OFF", scroll, function(button)
+    speedEnabled = not speedEnabled
+    if humanoid then
+        humanoid.WalkSpeed = speedEnabled and 45 or 16
+    end
+    button.Text = "SUPER SPEED : " ..
+        (speedEnabled and "ON" or "OFF")
+end)
+
+createButton("SAVE TELEPORT LOCATION", scroll, function()
+    if root then
+        savedPosition = root.CFrame
+    end
+end)
+
+createButton("TELEPORT TO SAVED LOCATION", scroll, function()
+    if root and savedPosition then
+        root.CFrame = savedPosition
+    end
+end)
+
+createButton("FLASHBACK / RETURN", scroll, function()
+    if root and savedPosition then
+        local current = root.CFrame
+        root.CFrame = savedPosition
+        savedPosition = current
+    end
+end)
+
+createButton("RESET CHARACTER", scroll, function()
+    if humanoid then
+        humanoid.Health = 0
+    end
+end)
+
+local minimized = false
+minimize.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    scroll.Visible = not minimized
+    main.Size = minimized
+        and UDim2.fromOffset(330, 50)
+        or UDim2.fromOffset(330, 430)
+    minimize.Text = minimized and "+" or "−"
+end)
+
+player.CharacterAdded:Connect(function()
+    stopFlying()
+    task.wait(0.3)
+    updateCharacter()
+    if speedEnabled then
+        humanoid.WalkSpeed = 45
+    end
+end)
+
+-- Opening animation
+main.Visible = false
+task.wait(0.2)
+main.Visible = true
+main.Size = UDim2.fromOffset(330, 0)
+
+TweenService:Create(
+    main,
+    TweenInfo.new(0.65, Enum.EasingStyle.Back),
+    {Size = UDim2.fromOffset(330, 430)}
+):Play()
+
+print("EDEX ULTIMATE V2 LOADED")
